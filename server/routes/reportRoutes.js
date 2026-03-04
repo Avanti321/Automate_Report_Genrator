@@ -6,70 +6,134 @@ const fs = require("fs");
 const path = require("path");
 const nodemailer = require("nodemailer");
 
-// FILE UPLOAD
+//FILE UPLOAD 
 
 const storage = multer.diskStorage({
   destination: "uploads/",
-  filename: (req, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname)
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB per file
+  },
+});
 
-//PDF HELPER 
+//PDF GENERATOR
 
 function generatePDF(report) {
   return new Promise((resolve, reject) => {
     const filePath = path.join("uploads", `report-${report._id}.pdf`);
-    const doc = new PDFDocument();
+    const doc = new PDFDocument({ margin: 40 });
     const stream = fs.createWriteStream(filePath);
 
     doc.pipe(stream);
 
-    // Header
-    doc.fontSize(20).text("Department Activity Report", { align: "center" });
-    doc.moveDown();
-    doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-    doc.moveDown();
+    // HEADER
+    doc.fontSize(16).text("Progressive Education Society's", { align: "center" });
+    doc.fontSize(14).text(
+      "Modern College of Arts, Science and Commerce (Autonomous)",
+      { align: "center" }
+    );
+    doc.fontSize(12).text("Ganeshkhind, Pune - 411016", { align: "center" });
+    doc.moveDown(1);
 
-    // Report details
-    doc.fontSize(12);
-    doc.text(`Title: ${report.title || "N/A"}`);
+    //  TITLE 
+    doc.fontSize(18).font("Helvetica-Bold").text(report.title || "ACTIVITY REPORT", {
+      align: "center",
+    });
+
+    doc.moveDown(1);
+    doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown(1);
+
+    doc.font("Helvetica").fontSize(12);
     doc.text(`Date: ${report.date || "N/A"}`);
     doc.text(`Duration: ${report.duration || "N/A"}`);
     doc.text(`Organized By: ${report.organizedBy || "N/A"}`);
-    doc.text(`Speaker: ${report.speakerName || "N/A"}`);
-    doc.text(`Speaker Designation: ${report.speakerDesignation || "N/A"}`);
 
-    if (report.classType && report.classType.length > 0) {
-      doc.text(`Class Type: ${report.classType.join(", ")}`);
-    }
+    doc.moveDown(0.5);
+    doc.moveTo(40, doc.y).lineTo(550, doc.y).stroke();
+    doc.moveDown(1);
 
-    doc.moveDown();
+    // SPEAKER 
+    doc.fontSize(14).font("Helvetica-Bold").text("Speaker Details:");
+    doc.fontSize(12).font("Helvetica");
+    doc.text(`Name: ${report.speakerName || "N/A"}`);
+    doc.text(`Designation: ${report.speakerDesignation || "N/A"}`);
+    doc.moveDown(1);
 
-    // Session roles
+    // SESSION
+    doc.fontSize(14).font("Helvetica-Bold").text("Session Conducted By:");
+    doc.fontSize(12).font("Helvetica");
+
     if (report.sessionRoles) {
-      doc.fontSize(14).text("Session Roles:");
-      doc.fontSize(12);
-      if (report.sessionRoles.hod) doc.text(`  HOD: ${report.sessionRoles.hod}`);
-      if (report.sessionRoles.coordinator) doc.text(`  Coordinator: ${report.sessionRoles.coordinator}`);
-      if (report.sessionRoles.anchor) doc.text(`  Anchor: ${report.sessionRoles.anchor}`);
-      if (report.sessionRoles.voteOfThanks) doc.text(`  Vote of Thanks: ${report.sessionRoles.voteOfThanks}`);
-      doc.moveDown();
+      doc.text(`HOD: ${report.sessionRoles.hod || "N/A"}`);
+      doc.text(`Coordinator: ${report.sessionRoles.coordinator || "N/A"}`);
+      doc.text(`Anchor: ${report.sessionRoles.anchor || "N/A"}`);
+      doc.text(`Vote of Thanks: ${report.sessionRoles.voteOfThanks || "N/A"}`);
+    }
+    doc.moveDown(1);
+
+    // AGENDA
+    doc.fontSize(14).font("Helvetica-Bold").text("Agenda:");
+    doc.fontSize(12).font("Helvetica").text(report.agenda || "N/A");
+    doc.moveDown(1);
+
+    // SUMMARY
+    doc.fontSize(14).font("Helvetica-Bold").text("Summary:");
+    doc.fontSize(12).font("Helvetica").text(report.summary || "N/A", {
+      align: "justify",
+    });
+    doc.moveDown(1);
+
+    // NOTICE PHOTOS
+    if (report.noticeFile && report.noticeFile.length > 0) {
+      doc.fontSize(14).font("Helvetica-Bold").text("Report / Notice Photos:");
+      doc.moveDown(2);
+
+      report.noticeFile.forEach((img) => {
+        const imgPath = path.join("uploads", img);
+        if (fs.existsSync(imgPath)) {
+          doc.image(imgPath, {
+            fit: [450, 300],
+            align: "center",
+          });
+          doc.moveDown(2);
+        }
+      });
     }
 
-    // Agenda
-    if (report.agenda) {
-      doc.fontSize(14).text("Agenda:");
-      doc.fontSize(12).text(report.agenda);
-      doc.moveDown();
+    // EVENT PHOTOS
+    if (report.photos && report.photos.length > 0) {
+      doc.moveDown(2);
+      doc.fontSize(14).font("Helvetica-Bold").text("Event Photos:");
+      doc.moveDown(2);
+
+      report.photos.forEach((img) => {
+        const imgPath = path.join("uploads", img);
+        if (fs.existsSync(imgPath)) {
+          doc.image(imgPath, {
+            fit: [450, 300],
+            align: "center",
+          });
+          doc.moveDown(2);
+        }
+      });
     }
 
-    // Summary
-    if (report.summary) {
-      doc.fontSize(14).text("Summary:");
-      doc.fontSize(12).text(report.summary);
-    }
+    // SIGNATURES
+    doc.moveDown(1);
+
+    doc.fontSize(12).font("Helvetica-Bold");
+    doc.text("_________________________", 50);
+    doc.text("HOD Signature", 75);
+
+    doc.text("_________________________", 350, doc.y - 25);
+    doc.text("Principal Signature", 375);
 
     doc.end();
 
@@ -78,51 +142,37 @@ function generatePDF(report) {
   });
 }
 
-// CREATE REPORT 
+//CREATE REPORT
 
-router.post("/create",
-  upload.fields([
-    { name: "notice", maxCount: 1 },
-    { name: "photos", maxCount: 10 }
-  ]),
-  async (req, res) => {
-    try {
-      // Parse sessionRoles if sent as JSON string
-      let sessionRoles = req.body.sessionRoles;
-      if (typeof sessionRoles === "string") {
-        sessionRoles = JSON.parse(sessionRoles);
-      }
-
-      // Parse classType if sent as JSON string
-      let classType = req.body.classType;
-      if (typeof classType === "string") {
-        classType = JSON.parse(classType);
-      }
-
-      const report = new Report({
-        ...req.body,
-        sessionRoles,
-        classType,
-        noticeFile: req.files?.notice?.[0]?.filename,
-        photos: req.files?.photos?.map(f => f.filename)
-      });
-
-      await report.save();
-      res.json(report);
-    } catch (err) {
-      console.error("Create report error:", err);
-      res.status(500).json({ error: "Failed to create report" });
+router.post("/", upload.fields([
+  { name: 'noticeFile', maxCount: 5 }, 
+  { name: 'photos', maxCount: 10 }
+]), async (req, res) => {
+  try {
+    const reportData = JSON.parse(req.body.data);
+    if (req.files['noticeFile']) {
+      reportData.noticeFile = req.files['noticeFile'].map(file => file.filename);
     }
-  }
-);
+    if (req.files['photos']) {
+      reportData.photos = req.files['photos'].map(file => file.filename);
+    }
 
-// GET REPORTS
+    const newReport = new Report(reportData);
+    await newReport.save();
+    res.status(201).json(newReport);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET ALL REPORTS
+
 router.get("/", async (req, res) => {
   const reports = await Report.find().sort({ createdAt: -1 });
   res.json(reports);
 });
 
-// PDF DOWNLOAD 
+// DOWNLOAD PDF 
 
 router.get("/pdf/:id", async (req, res) => {
   try {
@@ -132,67 +182,59 @@ router.get("/pdf/:id", async (req, res) => {
     const filePath = await generatePDF(report);
     res.download(filePath);
   } catch (err) {
-    console.error("PDF error:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to generate PDF" });
   }
 });
 
-// EMAIL REPORT
+//  EMAIL REPORT 
 
 router.post("/email/:id", async (req, res) => {
   try {
     const { to } = req.body;
-    if (!to) return res.status(400).json({ error: "Recipient email is required" });
+    if (!to) return res.status(400).json({ error: "Email required" });
 
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ error: "Report not found" });
 
-    // Generate PDF first
     const filePath = await generatePDF(report);
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
+        pass: process.env.EMAIL_PASS,
+      },
     });
 
     await transporter.sendMail({
-      from: `"Activity Report System" <${process.env.EMAIL_USER}>`,
+      from: process.env.EMAIL_USER,
       to,
-      subject: `Activity Report: ${report.title}`,
-      html: `
-        <div style="font-family: Arial; padding: 20px;">
-          <h2 style="color: #4F46E5;">Department Activity Report</h2>
-          <p><strong>Title:</strong> ${report.title}</p>
-          <p><strong>Date:</strong> ${report.date}</p>
-          <p><strong>Duration:</strong> ${report.duration}</p>
-          <p>The full report PDF is attached below.</p>
-        </div>
-      `,
-      attachments: [{
-        filename: `${report.title}-report.pdf`,
-        path: filePath
-      }]
+      subject: `Activity Report - ${report.title}`,
+      text: "Please find attached report.",
+      attachments: [
+        {
+          filename: `${report.title}-report.pdf`,
+          path: filePath,
+        },
+      ],
     });
 
     res.json({ message: "Email sent successfully" });
   } catch (err) {
-    console.error("Email error:", err);
-    res.status(500).json({ error: "Failed to send email: " + err.message });
+    console.error(err);
+    res.status(500).json({ error: "Email failed" });
   }
 });
 
-//DELETE REPORT
+// DELETE REPORT
 
 router.delete("/:id", async (req, res) => {
   try {
     await Report.findByIdAndDelete(req.params.id);
     res.json({ message: "Report deleted" });
   } catch (err) {
-    console.error("Delete error:", err);
-    res.status(500).json({ error: "Failed to delete report" });
+    res.status(500).json({ error: "Delete failed" });
   }
 });
 
