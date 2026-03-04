@@ -18,7 +18,7 @@ const reportSchema = new mongoose.Schema({
     voteOfThanks: String,
   },
 
-  noticeFile: String,
+  noticeFile: [String],
   photos: [String],
   createdBy: String
 }, { timestamps: true });
