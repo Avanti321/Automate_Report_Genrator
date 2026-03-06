@@ -33,16 +33,20 @@ function generatePDF(report) {
     doc.pipe(stream);
 
     // HEADER
-    doc.fontSize(16).text("Progressive Education Society's", { align: "center" });
-    doc.fontSize(14).text(
+    doc.fontSize(14).font("Helvetica-Bold").text("Progressive Education Society's", { align: "center" });
+    doc.moveDown(0.5);
+
+    doc.fontSize(14).font("Helvetica-Bold").text(
       "Modern College of Arts, Science and Commerce (Autonomous)",
       { align: "center" }
     );
-    doc.fontSize(12).text("Ganeshkhind, Pune - 411016", { align: "center" });
-    doc.moveDown(1);
+    doc.moveDown(0.5);
+
+    doc.fontSize(14).font("Helvetica-Bold").text("Ganeshkhind, Pune - 411016", { align: "center" });
+    doc.moveDown(0.5);
 
     //  TITLE 
-    doc.fontSize(18).font("Helvetica-Bold").text(report.title || "ACTIVITY REPORT", {
+    doc.fontSize(16).font("Helvetica-Bold").text(report.title || "ACTIVITY REPORT", {
       align: "center",
     });
 
@@ -60,15 +64,15 @@ function generatePDF(report) {
     doc.moveDown(1);
 
     // SPEAKER 
-    doc.fontSize(14).font("Helvetica-Bold").text("Speaker Details:");
-    doc.fontSize(12).font("Helvetica");
+    doc.fontSize(12).font("Helvetica-Bold").text("Speaker Details:");
+    doc.fontSize(11).font("Helvetica");
     doc.text(`Name: ${report.speakerName || "N/A"}`);
     doc.text(`Designation: ${report.speakerDesignation || "N/A"}`);
     doc.moveDown(1);
 
     // SESSION
-    doc.fontSize(14).font("Helvetica-Bold").text("Session Conducted By:");
-    doc.fontSize(12).font("Helvetica");
+    doc.fontSize(12).font("Helvetica-Bold").text("Session Conducted By:");
+    doc.fontSize(11).font("Helvetica");
 
     if (report.sessionRoles) {
       doc.text(`HOD: ${report.sessionRoles.hod || "N/A"}`);
@@ -79,27 +83,27 @@ function generatePDF(report) {
     doc.moveDown(1);
 
     // AGENDA
-    doc.fontSize(14).font("Helvetica-Bold").text("Agenda:");
-    doc.fontSize(12).font("Helvetica").text(report.agenda || "N/A");
+    doc.fontSize(12).font("Helvetica-Bold").text("Agenda:");
+    doc.fontSize(11).font("Helvetica").text(report.agenda || "N/A");
     doc.moveDown(1);
 
     // SUMMARY
-    doc.fontSize(14).font("Helvetica-Bold").text("Summary:");
-    doc.fontSize(12).font("Helvetica").text(report.summary || "N/A", {
+    doc.fontSize(12).font("Helvetica-Bold").text("Summary:");
+    doc.fontSize(11).font("Helvetica").text(report.summary || "N/A", {
       align: "justify",
     });
     doc.moveDown(1);
 
     // NOTICE PHOTOS
     if (report.noticeFile && report.noticeFile.length > 0) {
-      doc.fontSize(14).font("Helvetica-Bold").text("Report / Notice Photos:");
+      doc.fontSize(12).font("Helvetica-Bold").text("Report / Notice Photos:");
       doc.moveDown(2);
 
       report.noticeFile.forEach((img) => {
         const imgPath = path.join("uploads", img);
         if (fs.existsSync(imgPath)) {
           doc.image(imgPath, {
-            fit: [450, 300],
+            fit: [650, 500],
             align: "center",
           });
           doc.moveDown(2);
@@ -110,14 +114,14 @@ function generatePDF(report) {
     // EVENT PHOTOS
     if (report.photos && report.photos.length > 0) {
       doc.moveDown(2);
-      doc.fontSize(14).font("Helvetica-Bold").text("Event Photos:");
+      doc.fontSize(12).font("Helvetica-Bold").text("Event Photos:");
       doc.moveDown(2);
 
       report.photos.forEach((img) => {
         const imgPath = path.join("uploads", img);
         if (fs.existsSync(imgPath)) {
           doc.image(imgPath, {
-            fit: [450, 300],
+            fit: [650, 500],
             align: "center",
           });
           doc.moveDown(2);
