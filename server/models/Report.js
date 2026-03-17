@@ -6,11 +6,14 @@ const reportSchema = new mongoose.Schema({
   duration: String,
   objective: String,
   summary: String,
+
   classType: [String],
   whocanattend: [String], 
+
   organizedBy: String,
   speakerName: String,
   speakerDesignation: String,
+
   sessionRoles: {
     hod: String,
     coordinator: String,
@@ -19,7 +22,10 @@ const reportSchema = new mongoose.Schema({
   },
   noticeFile: [String], 
   photos: [String], 
-  registrationLink: String,
+
+  registrationLink: String,   //existing QR
+  attendanceLink: String,     //New QR for attendance 
+
   createdBy: String
 }, { timestamps: true });
 
