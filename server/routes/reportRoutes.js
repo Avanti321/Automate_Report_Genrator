@@ -110,8 +110,8 @@ async function generatePDF(report) {
       }
 
       // ── Utility: place image with uniform size, page-break if needed ─────
-      // imgW and imgH are FIXED — every image renders at exactly this size.
-      function placeImg(imgPath, imgW, imgH, contHeading) {
+      // Uses sharp to normalise image to JPEG before embedding — fixes rendering issues.
+      async function placeImg(imgPath, imgW, imgH, contHeading) {
         if (!fs.existsSync(imgPath)) return;
         if (doc.y + imgH > SAFE) {
           doc.addPage();
@@ -121,27 +121,64 @@ async function generatePDF(report) {
         }
         const x = M + (CW - imgW) / 2;
         const y = doc.y;
-        doc.image(imgPath, x, y, { width: imgW, height: imgH, cover: [imgW, imgH] });
+        try {
+          // Normalise via sharp: resize to exact pixel dimensions, convert to JPEG
+          const imgBuf = await sharp(imgPath)
+            .resize(Math.round(imgW * 2), Math.round(imgH * 2), {  // 2x for sharpness
+              fit: "contain",               // full image visible — no cropping
+              background: { r: 255, g: 255, b: 255, alpha: 1 },
+            })
+            .jpeg({ quality: 92 })
+            .toBuffer();
+          doc.image(imgBuf, x, y, { width: imgW, height: imgH });
+        } catch (imgErr) {
+          console.error("Image render error:", imgPath, imgErr.message);
+          // Fallback: try embedding raw file directly
+          try { doc.image(imgPath, x, y, { width: imgW, height: imgH }); } catch (_) {}
+        }
         doc.y = y + imgH + 8;
       }
 
       
       //  SECTION 1 — College Header
-
-      const logoPath = path.join(__dirname, "../assets/college-logo.png");
-      const LOGO_SIZE = 54;   // width & height of logo in points
-      if (fs.existsSync(logoPath)) {
-        const logoX = (PW - LOGO_SIZE) / 2;   // horizontally centered
-        doc.image(logoPath, logoX, doc.y, {
-          width: LOGO_SIZE,
-          height: LOGO_SIZE,
-          fit: [LOGO_SIZE, LOGO_SIZE],
-          align: "center",
-          valign: "center",
-        });
-        doc.y += LOGO_SIZE + 6;   // move cursor below logo with small gap
-      }
       
+      // College Logo
+      //  SECTION 1 — College Logo
+     
+      const LOGO_SIZE = 50;
+      const logoCandidates = [
+        path.join(__dirname, "../client/src/assets/logo.png"),
+        path.join(__dirname, "../../client/src/assets/logo.png"),
+        path.join(__dirname, "../public/logo.png"),
+        path.join(__dirname, "../../public/logo.png"),
+        path.join(process.cwd(), "client/src/assets/logo.png"),
+        path.join(process.cwd(), "public/logo.png"),
+        path.join(process.cwd(), "logo.png"),
+      ];
+      const logoPath = logoCandidates.find(p => fs.existsSync(p)) || null;
+      if (!logoPath) {
+        console.warn("⚠️  Logo not found. Tried:" + logoCandidates.join(" "));
+      }
+
+      if (logoPath) {
+        const logoX = (PW - LOGO_SIZE) / 2;
+        const logoY = doc.y;
+        try {
+          const logoBuf = await sharp(logoPath)
+            .resize(LOGO_SIZE * 2, LOGO_SIZE * 2, {
+              fit: "contain",
+              background: { r: 255, g: 255, b: 255, alpha: 0 },
+            })
+            .png()
+            .toBuffer();
+          doc.image(logoBuf, logoX, logoY, { width: LOGO_SIZE, height: LOGO_SIZE });
+        } catch (_) {
+          try { doc.image(logoPath, logoX, logoY, { width: LOGO_SIZE, height: LOGO_SIZE }); } catch (__) {}
+        }
+        // Manually advance doc.y — absolute-positioned images don't move the cursor
+        doc.y = logoY + LOGO_SIZE + 8;
+      }
+
       doc
         .fontSize(13).font("Helvetica-Bold").fillColor(INDIGO)
         .text("Progressive Education Society's", { align: "center" });
@@ -152,7 +189,7 @@ async function generatePDF(report) {
       doc.y += 1;
       doc
         .fontSize(9).font("Helvetica").fillColor(GRAY)
-        .text("Ganeshkhind, Pune – 411016", { align: "center" });
+        .text("Ganeshkhind, Pune - 411016", { align: "center" });
       doc.y += 5;
 
       // Bold indigo rule under header
@@ -180,11 +217,55 @@ async function generatePDF(report) {
       row("Organized By", report.organizedBy);
       row("Speaker",      report.speakerName);
       row("Designation",  report.speakerDesignation);
-      row("Who Can Attend", (report.targetClass && report.targetClass.length > 0)
-        ? report.targetClass.join(", ")
-        : "—");
-      doc.y += 7;
 
+     // -------- WHO CAN ATTEND (FINAL PERFECT LOGIC) --------
+
+    let attend = "—";
+
+    // Correct field from DB
+    let tc = report.whocanattend || [];
+
+    // Ensure array
+    if (!Array.isArray(tc)) {
+      tc = [tc];
+    }
+
+    // Clean values
+    tc = tc.filter(v => v && v.trim());
+
+    // Sentence generator
+    if (tc.includes("All")) {
+      attend = "All members can attend the workshop/event.";
+    }
+    else if (tc.length === 1) {
+      if (tc.includes("Students")) {
+        attend = "Students can attend the session.";
+      } else if (tc.includes("Faculty Members")) {
+        attend = "Faculty members can attend the session.";
+      } else if (tc.includes("Researchers")) {
+        attend = "Researchers can attend the session.";
+      }
+    }
+    else if (tc.length > 1) {
+    const map = {
+      "Students": "Students",
+      "Faculty Members": "Faculty members",
+      "Researchers": "Researchers"
+    };
+
+    const words = tc.map(v => map[v]).filter(Boolean);
+
+    if (words.length === 2) {
+      attend = `${words[0]} and ${words[1]} can attend the session.`;
+    } else {
+      const last = words.pop();
+      attend = `${words.join(", ")} and ${last} can attend the session.`;
+    }
+  }
+
+    // Print
+  row("Who Can Attend", attend);
+  doc.y += 7;
 
       //  SECTION 3 — Session Conducted By
      
@@ -218,7 +299,7 @@ async function generatePDF(report) {
     
       //  SECTION 6 — Notice / Circular Photos
     
-      if (report.noticeFile && report.noticeFile.length > 0) {
+        if (report.noticeFile && report.noticeFile.length > 0) {
         doc.addPage();
         doc.y = M;
         heading("Notice / Circular");
@@ -226,10 +307,11 @@ async function generatePDF(report) {
 
         const NOTICE_GAP = 16;   // gap between notice photos
         for (const fname of report.noticeFile) {
-          placeImg(path.join("uploads", fname), CW, 235, "Notice / Circular (continued)");
+          await placeImg(path.join("uploads", fname), CW, 235, "Notice / Circular (continued)");
           doc.y += NOTICE_GAP;   // 0.5cm space after each photo
         }
       }
+
 
       
       //  SECTION 7 — Event Photos 
@@ -281,6 +363,7 @@ async function generatePDF(report) {
         doc.y = rowY + (col === 1 ? EH : 0) + V_GAP;
       }
 
+
      
       //  SECTION 8 QR + Signatures
       
@@ -308,16 +391,10 @@ async function generatePDF(report) {
              .fill("#f0f4ff")
              .restore();
 
+          // QR image — link is embedded inside the QR itself, no URL text shown
           doc.image(qrBuf, qrX, qrY, { width: QR_SZ, height: QR_SZ });
-          doc.y = qrY + QR_SZ + 8;
-
-          doc
-            .fontSize(7.5).fillColor(BLUE)
-            .text(report.registrationLink, M, doc.y, {
-              width: CW, align: "center", link: report.registrationLink,
-            });
+          doc.y = qrY + QR_SZ + 16;
           doc.fillColor(BLACK);
-          doc.y += 16;
         } catch (e) {
           console.error("QR error:", e);
           doc.text(`Registration: ${report.registrationLink}`, { width: CW });
@@ -325,6 +402,43 @@ async function generatePDF(report) {
         }
       }
 
+
+      //  QR Attendance
+      if (report.attendanceLink) {
+        heading("Event Attendance");
+        doc.y += 4;
+
+        doc
+          .fontSize(10)
+          .font("Helvetica")
+          .fillColor(GRAY)
+          .text("Scan the QR code below to mark your attendance:", { width: CW });
+
+        doc.y += 10;
+
+        try {
+          const qrBuf = await makeQR(report.attendanceLink);
+          const QR_SZ = 105;
+          const qrX   = (PW - QR_SZ) / 2;
+          const qrY   = doc.y;
+
+          // Light card behind QR
+          doc.save()
+            .roundedRect(qrX - 10, qrY - 8, QR_SZ + 20, QR_SZ + 18, 6)
+            .fill("#f0f4ff")
+            .restore();
+
+          doc.image(qrBuf, qrX, qrY, { width: QR_SZ, height: QR_SZ });
+          doc.y = qrY + QR_SZ + 16;
+          doc.fillColor(BLACK);
+        } catch (e) {
+          console.error("Attendance QR error:", e);
+          doc.text(`Attendance: ${report.attendanceLink}`, { width: CW });
+          doc.y += 10;
+        }
+      }
+
+      
       // Signatures
      
       heading("Signatures");
@@ -358,7 +472,7 @@ async function generatePDF(report) {
       }
       sigSlot(sig3X, "Principal",      "");
       sigSlot(sig2X, "Vice Principal", "");
-      sigSlot(sig1X, "HOD",           report.sessionRoles?.hod || "");
+      sigSlot(sig1X, "HOD", "");
       doc.y = sigY + 48;
 
       //Generation stamp
