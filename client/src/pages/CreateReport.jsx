@@ -11,10 +11,10 @@ const emptyReport = () => ({
   organizedBy: "",
   speakerName: "",
   speakerDesignation: "",
-  registrationLink: "",           // NEW: for QR code
+  registrationLink: "",
+  attendanceLink: "",
   sessionRoles: { hod: "", coordinator: "", anchor: "", voteOfThanks: "" },
-  classType: [],
-  targetClass: [],
+  whocanattend: [],
   noticeFiles: [],                // notice file objects
   photos: [],                     // event photo file objects
   noticePreviews: [],             // base64 preview URLs
@@ -33,7 +33,7 @@ function FilePreview({ previews, label, onRemove }) {
             <img
               src={src}
               alt={`preview-${i}`}
-              className="w-20 h-20 object-cover rounded-lg border border-gray-200 shadow-sm"
+              className="w-20 h-20 object-contain rounded-lg border border-gray-200 shadow-sm bg-gray-50"
             />
             <button
               onClick={() => onRemove(i)}
@@ -158,17 +158,17 @@ function ReportCard({ index, report, onChange, onRemove, totalReports }) {
             WHO CAN ATTEND?? <span className="text-gray-400">(select one or more)</span>
           </label>
           <div className="flex flex-wrap gap-2">
-            {["Faculty Members", "Students", "Reseachers", "All"].map((cls) => {
+            {["Students", "Faculty Members", "Researchers", "All"].map((cls) => {
               const isAll = cls === "All";
               const selected = isAll
-                ? report.targetClass.includes("All")
-                : report.targetClass.includes(cls) && !report.targetClass.includes("All");
+                ? report.whocanattend.includes("All")
+                : report.whocanattend.includes(cls) && !report.whocanattend.includes("All");
               const toggle = () => {
                 if (isAll) {
-                  set("targetClass", report.targetClass.includes("All") ? [] : ["All"]);
+                  set("whocanattend", report.whocanattend.includes("All") ? [] : ["All"]);
                 } else {
-                  const without = report.targetClass.filter((c) => c !== "All");
-                  set("targetClass", without.includes(cls) ? without.filter((c) => c !== cls) : [...without, cls]);
+                  const without = report.whocanattend.filter((c) => c !== "All");
+                  set("whocanattend", without.includes(cls) ? without.filter((c) => c !== cls) : [...without, cls]);
                 }
               };
               return (
@@ -184,9 +184,24 @@ function ReportCard({ index, report, onChange, onRemove, totalReports }) {
               );
             })}
           </div>
-          {report.targetClass.length > 0 && (
+          {report.whocanattend.length > 0 && (
             <p className="text-xs text-indigo-500 mt-2">
-              ✓ Selected: <span className="font-semibold">{report.targetClass.join(", ")}</span>
+              ✓ PDF will show:{" "}
+              <span className="font-semibold">
+                {(() => {
+                  const tc = report.whocanattend;
+                  if (tc.includes("All")) return "All members can attend the workshop/event.";
+                  const labelMap = {
+                    "Students": "Students",
+                    "Faculty Members": "Faculty members",
+                    "Researchers": "Researchers",
+                  };
+                  const words = tc.map((v) => labelMap[v] || v);
+                  if (words.length === 1) return `${words[0]} can attend the session.`;
+                  const last = words[words.length - 1];
+                  return `${words.slice(0, -1).join(", ")} and ${last} can attend the session.`;
+                })()}
+              </span>
             </p>
           )}
         </div>
@@ -205,6 +220,20 @@ function ReportCard({ index, report, onChange, onRemove, totalReports }) {
             value={report.registrationLink} onChange={(e) => set("registrationLink", e.target.value)} />
         </div>
       </section>
+
+      {/* QR / ATTENDANCE LINK */}
+      <section className="mb-6">
+        <h4 className="text-sm font-semibold text-indigo-500 uppercase tracking-wide border-b border-indigo-50 pb-2 mb-4">
+        📋 Attendance QR Code
+        </h4>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+          Attendance Form Link <span className="text-gray-400">(QR code will be embedded in PDF)</span>
+          </label>
+          <input type="url" className={inputClass} placeholder="https://your-attendance-form-link"
+           value={report.attendanceLink} onChange={(e) => set("attendanceLink", e.target.value)}/>
+      </div>
+    </section>
 
       {/* SESSION ROLES */}
       <section className="mb-6">
@@ -246,6 +275,7 @@ function ReportCard({ index, report, onChange, onRemove, totalReports }) {
         <h4 className="text-sm font-semibold text-indigo-500 uppercase tracking-wide border-b border-indigo-50 pb-2 mb-4">
           Upload Media
         </h4>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Notice / Circular Photos</label>
