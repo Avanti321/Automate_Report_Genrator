@@ -511,6 +511,9 @@ router.post("/email/:id", async (req, res) => {
     const { to } = req.body;
     if (!to) return res.status(400).json({ error: "Email required" });
 
+    console.log("EMAIL_USER:", process.env.EMAIL_USER);
+    console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
+
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ error: "Not found" });
 
