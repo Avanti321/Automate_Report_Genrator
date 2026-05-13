@@ -42,10 +42,15 @@ async function makeQR(url) {
 // ─────────────────────────────────────────────
 async function generatePDF(report) {
   const uploadsDir = path.join(__dirname, "../uploads");
+  console.log("uploadsDir:", uploadsDir);
+
   if (!require("fs").existsSync(uploadsDir)) {
     require("fs").mkdirSync(uploadsDir, { recursive: true });
+    console.log("Created uploads dir");
   }
+
   const outPath = path.join(uploadsDir, `report-${report._id}.pdf`);
+  console.log("outPath:", outPath);
 
   return new Promise(async (resolve, reject) => {
     try {
@@ -435,8 +440,14 @@ async function generatePDF(report) {
         );
 
       doc.end();
-      stream.on("finish", () => resolve(outPath));
-      stream.on("error", reject);
+      stream.on("finish", () => {
+        console.log("PDF generated successfully:", outPath);
+        resolve(outPath);
+      });
+      stream.on("error", (err) => {
+        console.error("Stream error:", err);
+        reject(err);
+      });
 
     } catch (err) {
       reject(err);
