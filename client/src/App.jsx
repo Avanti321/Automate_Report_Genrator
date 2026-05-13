@@ -4,7 +4,7 @@ import Login from "./pages/Login";
 import Home from "./pages/Home";
 import MainLayout from "./components/Mainlayout";
 import CreateReport from "./pages/CreateReport";
-import ViewReports from "./pages/ViewReports";
+import ViewReports from "./pages/Viewreports";
 import Dashboard from "./pages/Dashboard";
 
 // Protects routes that require login
