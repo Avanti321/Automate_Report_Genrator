@@ -10,10 +10,27 @@ const QRCode = require("qrcode");
 const sharp = require("sharp");
 
 // ─────────────────────────────────────────────
-//  FILE UPLOAD
+//  UPLOADS DIRECTORY (absolute, always exists)
 // ─────────────────────────────────────────────
+const UPLOADS_DIR = path.join(__dirname, "../uploads");
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+// ─────────────────────────────────────────────
+//  FILE UPLOAD  ← switched to diskStorage so
+//  f.filename is always a real string, never null
+// ─────────────────────────────────────────────
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)
@@ -37,19 +54,19 @@ async function makeQR(url) {
   });
 }
 
+// Safe absolute path for an uploaded file
+function uploadPath(filename) {
+  if (!filename || typeof filename !== "string") return null;
+  return path.join(UPLOADS_DIR, filename);
+}
+
 // ─────────────────────────────────────────────
 //  PDF GENERATOR
 // ─────────────────────────────────────────────
 async function generatePDF(report) {
-  const uploadsDir = path.join(__dirname, "../uploads");
-  console.log("uploadsDir:", uploadsDir);
+  console.log("UPLOADS_DIR:", UPLOADS_DIR);
 
-  if (!require("fs").existsSync(uploadsDir)) {
-    require("fs").mkdirSync(uploadsDir, { recursive: true });
-    console.log("Created uploads dir");
-  }
-
-  const outPath = path.join(uploadsDir, `report-${report._id}.pdf`);
+  const outPath = path.join(UPLOADS_DIR, `report-${report._id}.pdf`);
   console.log("outPath:", outPath);
 
   return new Promise(async (resolve, reject) => {
@@ -67,15 +84,15 @@ async function generatePDF(report) {
       const CW = PW - M * 2;      // 515
       const SAFE = PH - M - 10;
 
-      const stream = fs.createWriteStream(outPath);
-      doc.pipe(stream);
-
       // ── Colour palette ──────────────────────────────────────────────
       const INDIGO = "#3730a3";
       const GRAY = "#6b7280";
       const BLACK = "#1f2937";
       const BGBLUE = "#eef2ff";
       const LINERULE = "#c7d2fe";
+
+      const stream = fs.createWriteStream(outPath);
+      doc.pipe(stream);
 
       // ── Utility: horizontal rule ─────────────────────────────────────
       function hr(color, weight) {
@@ -111,7 +128,8 @@ async function generatePDF(report) {
 
       // ── Utility: place image with page-break guard ───────────────────
       async function placeImg(imgPath, imgW, imgH, contHeading) {
-        if (!fs.existsSync(imgPath)) return;
+        // Guard: null/missing path
+        if (!imgPath || !fs.existsSync(imgPath)) return;
         if (doc.y + imgH > SAFE) {
           doc.addPage(); doc.y = M;
           if (contHeading) heading(contHeading);
@@ -136,9 +154,8 @@ async function generatePDF(report) {
       }
 
       // ── Utility: draw one QR section ─────────────────────────────────
-      // FIX: extracted into a reusable function so all 3 QRs are identical
       async function drawQRSection(sectionTitle, scanLabel, link, errorFallbackLabel) {
-        // Guard: enough vertical space for heading + label + QR card (~200pt)
+        if (!link) return;
         if (doc.y + 200 > SAFE) { doc.addPage(); doc.y = M; }
 
         heading(sectionTitle);
@@ -160,11 +177,10 @@ async function generatePDF(report) {
             .restore();
 
           doc.image(qrBuf, qrX, qrY, { width: QR_SZ, height: QR_SZ });
-          doc.y = qrY + QR_SZ + 20;   // consistent spacing after every QR
+          doc.y = qrY + QR_SZ + 20;
           doc.fillColor(BLACK);
         } catch (e) {
           console.error(`${sectionTitle} QR error:`, e);
-          // FIX: each fallback now correctly labels its own link
           doc.text(`${errorFallbackLabel}: ${link}`, { width: CW });
           doc.y += 10;
         }
@@ -302,19 +318,23 @@ async function generatePDF(report) {
 
       // ══════════════════════════════════════════════════════════════════
       //  SECTION 6 — Notice / Circular Photos
+      //  FIX: use uploadPath() for absolute, null-safe path
       // ══════════════════════════════════════════════════════════════════
       if (report.noticeFile && report.noticeFile.length > 0) {
         doc.addPage(); doc.y = M;
         heading("Notice / Circular");
         doc.y += 4;
         for (const fname of report.noticeFile) {
-          await placeImg(path.join("uploads", fname), CW, 235, "Notice / Circular (continued)");
+          const absPath = uploadPath(fname);
+          if (!absPath) continue;                         // skip null filenames
+          await placeImg(absPath, CW, 235, "Notice / Circular (continued)");
           doc.y += 16;
         }
       }
 
       // ══════════════════════════════════════════════════════════════════
       //  SECTION 7 — Event Photos (2-per-row grid)
+      //  FIX: use uploadPath() for absolute, null-safe path
       // ══════════════════════════════════════════════════════════════════
       if (report.photos && report.photos.length > 0) {
         doc.addPage(); doc.y = M;
@@ -330,8 +350,8 @@ async function generatePDF(report) {
         let rowY = doc.y;
 
         for (let i = 0; i < report.photos.length; i++) {
-          const imgPath = path.join("uploads", report.photos[i]);
-          if (!fs.existsSync(imgPath)) continue;
+          const imgPath = uploadPath(report.photos[i]);
+          if (!imgPath || !fs.existsSync(imgPath)) continue; // skip null/missing
 
           if (col === 0 && rowY + EH > SAFE) {
             doc.addPage(); doc.y = M;
@@ -357,12 +377,9 @@ async function generatePDF(report) {
       }
 
       // ══════════════════════════════════════════════════════════════════
-      //  SECTION 8 — QR Codes + Signatures  (always on a fresh page)
+      //  SECTION 8 — QR Codes + Signatures (always on a fresh page)
       // ══════════════════════════════════════════════════════════════════
       doc.addPage(); doc.y = M;
-
-      // FIX: use the unified drawQRSection() helper for all three QRs
-      // so spacing, page-break guard, and fallback labels are all correct.
 
       if (report.registrationLink) {
         await drawQRSection(
@@ -382,20 +399,16 @@ async function generatePDF(report) {
         );
       }
 
-      // FIX: feedbackformLink was rendering correctly in logic but could be
-      // cut off when all 3 QRs appeared on the same page.
-      // drawQRSection() now adds a new page automatically if space < 200pt.
       if (report.feedbackformLink) {
         await drawQRSection(
           "Event Feedback",
           "Scan the QR code below to fill in the feedback form:",
           report.feedbackformLink,
-          "Feedback"   // FIX: was incorrectly labelled "Attendance" before
+          "Feedback"
         );
       }
 
       // ── Signatures ───────────────────────────────────────────────────
-      // Guard: signatures need ~120pt
       if (doc.y + 120 > SAFE) { doc.addPage(); doc.y = M; }
 
       heading("Signatures");
@@ -460,6 +473,7 @@ async function generatePDF(report) {
 // ─────────────────────────────────────────────
 
 // CREATE
+// FIX: diskStorage sets f.filename correctly — no more undefined/null filenames
 router.post(
   "/",
   upload.fields([
@@ -470,9 +484,6 @@ router.post(
     try {
       const data = JSON.parse(req.body.data);
 
-      // FIX: make sure feedbackformLink (and all link fields) are
-      // included in `data` — they come from req.body.data (JSON), NOT
-      // from req.files, so they must be set by the frontend before posting.
       if (req.files["noticeFile"])
         data.noticeFile = req.files["noticeFile"].map((f) => f.filename);
       if (req.files["photos"])
@@ -481,7 +492,6 @@ router.post(
       const report = new Report(data);
       await report.save();
 
-      // Debug log — remove after confirming feedbackformLink saves correctly
       console.log("Saved report feedbackformLink:", report.feedbackformLink);
 
       res.status(201).json(report);
@@ -506,7 +516,6 @@ router.get("/pdf/:id", async (req, res) => {
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ error: "Not found" });
 
-    // Debug log — remove after confirming QR appears in PDF
     console.log("Generating PDF for:", report.title);
     console.log("  registrationLink :", report.registrationLink);
     console.log("  attendanceLink   :", report.attendanceLink);
@@ -521,6 +530,8 @@ router.get("/pdf/:id", async (req, res) => {
 });
 
 // EMAIL
+// FIX: generatePDF now always returns a valid absolute path string — no more
+//      path.join(null) crash at line 311
 router.post("/email/:id", async (req, res) => {
   try {
     const { to } = req.body;
@@ -529,11 +540,15 @@ router.post("/email/:id", async (req, res) => {
     console.log("EMAIL_USER:", process.env.EMAIL_USER);
     console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
 
+    // Guard: make sure env vars are present before even trying
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      return res.status(500).json({ error: "Email credentials not configured on server" });
+    }
+
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ error: "Not found" });
 
     const fp = await generatePDF(report);
-
     console.log("PDF path:", fp);
 
     if (!fp) return res.status(500).json({ error: "PDF generation failed" });
@@ -569,20 +584,21 @@ router.post("/email/:id", async (req, res) => {
     console.error("FULL EMAIL ERROR:", err);
     res.status(500).json({ error: "Email failed: " + err.message });
   }
-
 });
 
 // DELETE
+// FIX: use UPLOADS_DIR constant for absolute paths — no more relative path issues
 router.delete("/:id", async (req, res) => {
   try {
     const r = await Report.findByIdAndDelete(req.params.id);
     if (r) {
       [...(r.noticeFile || []), ...(r.photos || [])].forEach((f) => {
-        const p = path.join("uploads", f);
+        if (!f) return;                                   // skip null filenames
+        const p = path.join(UPLOADS_DIR, f);
         if (fs.existsSync(p)) fs.unlinkSync(p);
       });
-      const p = path.join("uploads", `report-${r._id}.pdf`);
-      if (fs.existsSync(p)) fs.unlinkSync(p);
+      const pdfPath = path.join(UPLOADS_DIR, `report-${r._id}.pdf`);
+      if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
     }
     res.json({ message: "Deleted" });
   } catch (err) {
