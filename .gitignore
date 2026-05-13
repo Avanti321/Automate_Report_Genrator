@@ -9,9 +9,6 @@ yarn-error.log*
 .env.local
 .env.production
 
-# Server uploads folder
-server/uploads/
-
 # Logs
 logs/
 *.log
