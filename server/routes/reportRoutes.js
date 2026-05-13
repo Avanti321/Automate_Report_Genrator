@@ -12,12 +12,8 @@ const sharp       = require("sharp");
 // ─────────────────────────────────────────────
 //  FILE UPLOAD
 // ─────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: "uploads/",
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
-});
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)
