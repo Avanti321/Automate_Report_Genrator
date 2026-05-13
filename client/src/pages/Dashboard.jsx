@@ -9,14 +9,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/api/reports")
+      .get(`${import.meta.env.VITE_API_URL}/api/reports`)
       .then((res) => setReports(res.data))
       .finally(() => setLoading(false));
   }, []);
 
   const deleteReport = async (id) => {
     if (!window.confirm("Are you sure you want to delete this report?")) return;
-    await axios.delete(`http://localhost:5000/api/reports/${id}`);
+    await axios.delete(`${import.meta.env.VITE_API_URL}/api/reports/${id}`);
     setReports(reports.filter((r) => r._id !== id));
   };
 
@@ -28,7 +28,7 @@ export default function Dashboard() {
     }
     setEmailStatus({ ...emailStatus, [id]: "sending" });
     try {
-      await axios.post(`http://localhost:5000/api/reports/email/${id}`, { to: to.trim() });
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/reports/email/${id}`, { to: to.trim() });
       setEmailStatus({ ...emailStatus, [id]: "sent" });
     } catch {
       setEmailStatus({ ...emailStatus, [id]: "error" });
@@ -124,7 +124,7 @@ export default function Dashboard() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <a
-                          href={`http://localhost:5000/api/reports/pdf/${r._id}`}
+                          href={`${import.meta.env.VITE_API_URL}/api/reports/pdf/${r._id}`}
                           target="_blank"
                           rel="noreferrer"
                           className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs rounded-lg hover:bg-indigo-100 transition"

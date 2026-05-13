@@ -353,14 +353,14 @@ export default function CreateReport() {
         noticeFiles.forEach((f) => formData.append("noticeFile", f));
         photos.forEach((f) => formData.append("photos", f));
 
-        const res = await axios.post("http://localhost:5000/api/reports", formData, {
+        const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/reports`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 
         let emailMsg = "";
         if (email) {
           try {
-            await axios.post(`http://localhost:5000/api/reports/email/${res.data._id}`, { to: email });
+            await axios.post(`${import.meta.env.VITE_API_URL}/api/reports/email/${res.data._id}`, { to: email });
             emailMsg = ` | Email sent to ${email}`;
           } catch {
             emailMsg = " | Email delivery failed";

@@ -7,7 +7,7 @@ export default function ViewReports() {
 
   useEffect(() => {
     axios
-      .get("http://localhost:5000/api/reports")
+      .get(`${import.meta.env.VITE_API_URL}/api/reports`)
       .then((res) => setReports(res.data))
       .finally(() => setLoading(false));
   }, []);
@@ -60,7 +60,7 @@ export default function ViewReports() {
 
               <div className="flex gap-2 mt-auto">
                 <a
-                  href={`http://localhost:5000/api/reports/pdf/${r._id}`}
+                  href={`${import.meta.env.VITE_API_URL}/api/reports/pdf/${r._id}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex-1 text-center bg-indigo-50 text-indigo-700 text-sm font-medium py-2 rounded-lg hover:bg-indigo-100 transition"

@@ -3,11 +3,11 @@ import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function Register() {
-  const [form, setForm] = useState({ 
+  const [form, setForm] = useState({
     name: "",
-    email:"",
-    password:"",
-    role: "faculty" 
+    email: "",
+    password: "",
+    role: "faculty"
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,39 +16,39 @@ export default function Register() {
   const navigate = useNavigate();
 
   const register = async (e) => {
-  e.preventDefault();
-  setError("");
+    e.preventDefault();
+    setError("");
 
-  // ✅ FRONTEND VALIDATION
-  if (!form.name || !form.email || !form.password) {
-    setError("All fields are required");
-    return;
-  }
+    // ✅ FRONTEND VALIDATION
+    if (!form.name || !form.email || !form.password) {
+      setError("All fields are required");
+      return;
+    }
 
-  setLoading(true);
+    setLoading(true);
 
-  try {
-    console.log("Sending:", form);
+    try {
+      console.log("Sending:", form);
 
-    const res = await axios.post(
-      "http://localhost:5000/api/auth/register",
-      form
-    );
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/auth/register`,
+        form
+      );
 
-    alert(res.data.message);
-    navigate("/login");
+      alert(res.data.message);
+      navigate("/login");
 
-  } catch (err) {
-    console.error("ERROR:", err);
+    } catch (err) {
+      console.error("ERROR:", err);
 
-    setError(
-      err.response?.data?.message ||
-      "Registration failed. Try again."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+      setError(
+        err.response?.data?.message ||
+        "Registration failed. Try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
   const inputStyle = (field) => ({
