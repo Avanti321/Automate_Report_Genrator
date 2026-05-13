@@ -523,6 +523,11 @@ router.post("/email/:id", async (req, res) => {
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     });
 
+    t.verify((error, success) => {
+      if (error) console.log("SMTP Error:", error);
+      else console.log("SMTP Ready:", success);
+    });
+
     await t.sendMail({
       from: `"Activity Report System" <${process.env.EMAIL_USER}>`,
       to,
@@ -540,9 +545,11 @@ router.post("/email/:id", async (req, res) => {
     });
 
     res.json({ message: "Email sent" });
-  } catch (err) {
+ } catch (err) {
+    console.error("FULL EMAIL ERROR:", err);
     res.status(500).json({ error: "Email failed: " + err.message });
   }
+  
 });
 
 // DELETE
