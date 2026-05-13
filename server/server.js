@@ -14,6 +14,7 @@ app.use(cors({
   origin: [
     "http://localhost:5173",
     "https://automate-report-genrator.vercel.app",
+    "https://automate-report-genrator-3itlrgv4b-avanti321s-projects.vercel.app",
     /\.vercel\.app$/
   ],
   credentials: true
