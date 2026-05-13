@@ -1,13 +1,13 @@
 require("dotenv").config();
-const router      = require("express").Router();
-const multer      = require("multer");
-const Report      = require("../models/Report");
+const router = require("express").Router();
+const multer = require("multer");
+const Report = require("../models/Report");
 const PDFDocument = require("pdfkit");
-const fs          = require("fs");
-const path        = require("path");
-const nodemailer  = require("nodemailer");
-const QRCode      = require("qrcode");
-const sharp       = require("sharp");
+const fs = require("fs");
+const path = require("path");
+const nodemailer = require("nodemailer");
+const QRCode = require("qrcode");
+const sharp = require("sharp");
 
 // ─────────────────────────────────────────────
 //  FILE UPLOAD
@@ -41,11 +41,15 @@ async function makeQR(url) {
 //  PDF GENERATOR
 // ─────────────────────────────────────────────
 async function generatePDF(report) {
-  const outPath = path.join("uploads", `report-${report._id}.pdf`);
+  const uploadsDir = path.join(__dirname, "../uploads");
+  if (!require("fs").existsSync(uploadsDir)) {
+    require("fs").mkdirSync(uploadsDir, { recursive: true });
+  }
+  const outPath = path.join(uploadsDir, `report-${report._id}.pdf`);
 
   return new Promise(async (resolve, reject) => {
     try {
-      const M  = 40;
+      const M = 40;
       const doc = new PDFDocument({
         size: "A4",
         margin: M,
@@ -53,19 +57,19 @@ async function generatePDF(report) {
         bufferPages: false,
       });
 
-      const PW   = doc.page.width;   // 595
-      const PH   = doc.page.height;  // 842
-      const CW   = PW - M * 2;      // 515
+      const PW = doc.page.width;   // 595
+      const PH = doc.page.height;  // 842
+      const CW = PW - M * 2;      // 515
       const SAFE = PH - M - 10;
 
       const stream = fs.createWriteStream(outPath);
       doc.pipe(stream);
 
       // ── Colour palette ──────────────────────────────────────────────
-      const INDIGO  = "#3730a3";
-      const GRAY    = "#6b7280";
-      const BLACK   = "#1f2937";
-      const BGBLUE  = "#eef2ff";
+      const INDIGO = "#3730a3";
+      const GRAY = "#6b7280";
+      const BLACK = "#1f2937";
+      const BGBLUE = "#eef2ff";
       const LINERULE = "#c7d2fe";
 
       // ── Utility: horizontal rule ─────────────────────────────────────
@@ -121,7 +125,7 @@ async function generatePDF(report) {
           doc.image(imgBuf, x, y, { width: imgW, height: imgH });
         } catch (imgErr) {
           console.error("Image render error:", imgPath, imgErr.message);
-          try { doc.image(imgPath, x, y, { width: imgW, height: imgH }); } catch (_) {}
+          try { doc.image(imgPath, x, y, { width: imgW, height: imgH }); } catch (_) { }
         }
         doc.y = y + imgH + 8;
       }
@@ -142,13 +146,13 @@ async function generatePDF(report) {
         try {
           const qrBuf = await makeQR(link);
           const QR_SZ = 105;
-          const qrX   = (PW - QR_SZ) / 2;
-          const qrY   = doc.y;
+          const qrX = (PW - QR_SZ) / 2;
+          const qrY = doc.y;
 
           doc.save()
-             .roundedRect(qrX - 10, qrY - 8, QR_SZ + 20, QR_SZ + 18, 6)
-             .fill("#f0f4ff")
-             .restore();
+            .roundedRect(qrX - 10, qrY - 8, QR_SZ + 20, QR_SZ + 18, 6)
+            .fill("#f0f4ff")
+            .restore();
 
           doc.image(qrBuf, qrX, qrY, { width: QR_SZ, height: QR_SZ });
           doc.y = qrY + QR_SZ + 20;   // consistent spacing after every QR
@@ -190,7 +194,7 @@ async function generatePDF(report) {
             .toBuffer();
           doc.image(logoBuf, logoX, logoY, { width: LOGO_SIZE, height: LOGO_SIZE });
         } catch (_) {
-          try { doc.image(logoPath, logoX, logoY, { width: LOGO_SIZE, height: LOGO_SIZE }); } catch (__) {}
+          try { doc.image(logoPath, logoX, logoY, { width: LOGO_SIZE, height: LOGO_SIZE }); } catch (__) { }
         }
         doc.y = logoY + LOGO_SIZE + 8;
       }
@@ -227,11 +231,11 @@ async function generatePDF(report) {
       //  SECTION 2 — Event Details
       // ══════════════════════════════════════════════════════════════════
       heading("Event Details");
-      row("Date",         report.date);
-      row("Duration",     report.duration);
+      row("Date", report.date);
+      row("Duration", report.duration);
       row("Organized By", report.organizedBy);
-      row("Speaker",      report.speakerName);
-      row("Designation",  report.speakerDesignation);
+      row("Speaker", report.speakerName);
+      row("Designation", report.speakerDesignation);
 
       // Who Can Attend
       let attend = "—";
@@ -243,19 +247,19 @@ async function generatePDF(report) {
         attend = "All members can attend the workshop/event.";
       } else if (tc.length === 1) {
         const map1 = {
-          "Students":       "Students can attend the session.",
-          "Faculty Members":"Faculty members can attend the session.",
-          "Researchers":    "Researchers can attend the session.",
+          "Students": "Students can attend the session.",
+          "Faculty Members": "Faculty members can attend the session.",
+          "Researchers": "Researchers can attend the session.",
         };
         attend = map1[tc[0]] || tc[0];
       } else if (tc.length > 1) {
         const map = {
-          "Students":       "Students",
-          "Faculty Members":"Faculty members",
-          "Researchers":    "Researchers",
+          "Students": "Students",
+          "Faculty Members": "Faculty members",
+          "Researchers": "Researchers",
         };
         const words = tc.map(v => map[v]).filter(Boolean);
-        const last  = words.pop();
+        const last = words.pop();
         attend = `${words.join(", ")} and ${last} can attend the session.`;
       }
       row("Who Can Attend", attend);
@@ -266,9 +270,9 @@ async function generatePDF(report) {
       // ══════════════════════════════════════════════════════════════════
       if (report.sessionRoles) {
         heading("Session Conducted By");
-        row("HOD",            report.sessionRoles.hod);
-        row("Coordinator",    report.sessionRoles.coordinator);
-        row("Anchor",         report.sessionRoles.anchor);
+        row("HOD", report.sessionRoles.hod);
+        row("Coordinator", report.sessionRoles.coordinator);
+        row("Anchor", report.sessionRoles.anchor);
         row("Vote of Thanks", report.sessionRoles.voteOfThanks);
         doc.y += 7;
       }
@@ -314,10 +318,10 @@ async function generatePDF(report) {
 
         const H_GAP = 14;
         const V_GAP = 14;
-        const EW    = (CW - H_GAP) / 2;
-        const EH    = 185;
+        const EW = (CW - H_GAP) / 2;
+        const EH = 185;
 
-        let col  = 0;
+        let col = 0;
         let rowY = doc.y;
 
         for (let i = 0; i < report.photos.length; i++) {
@@ -340,7 +344,7 @@ async function generatePDF(report) {
           if (col === 0) {
             col = 1;
           } else {
-            col  = 0;
+            col = 0;
             rowY += EH + V_GAP;
           }
         }
@@ -392,14 +396,14 @@ async function generatePDF(report) {
       heading("Signatures");
       doc.y += 38;
 
-      const COL_W    = Math.floor(CW / 3);
-      const LINE_W   = Math.floor(COL_W * 0.72);
+      const COL_W = Math.floor(CW / 3);
+      const LINE_W = Math.floor(COL_W * 0.72);
       const LINE_OFF = Math.floor((COL_W - LINE_W) / 2);
 
       const sig1X = M + LINE_OFF;
       const sig2X = M + COL_W + LINE_OFF;
       const sig3X = M + COL_W * 2 + LINE_OFF;
-      const sigY  = doc.y;
+      const sigY = doc.y;
 
       function sigSlot(x, label, name) {
         doc
@@ -415,9 +419,9 @@ async function generatePDF(report) {
         }
       }
 
-      sigSlot(sig3X, "Principal",      "");
+      sigSlot(sig3X, "Principal", "");
       sigSlot(sig2X, "Vice Principal", "");
-      sigSlot(sig1X, "HOD",            "");
+      sigSlot(sig1X, "HOD", "");
       doc.y = sigY + 48;
 
       // ── Generation stamp ─────────────────────────────────────────────
@@ -432,7 +436,7 @@ async function generatePDF(report) {
 
       doc.end();
       stream.on("finish", () => resolve(outPath));
-      stream.on("error",  reject);
+      stream.on("error", reject);
 
     } catch (err) {
       reject(err);
@@ -449,7 +453,7 @@ router.post(
   "/",
   upload.fields([
     { name: "noticeFile", maxCount: 10 },
-    { name: "photos",     maxCount: 20 },
+    { name: "photos", maxCount: 20 },
   ]),
   async (req, res) => {
     try {
@@ -518,7 +522,12 @@ router.post("/email/:id", async (req, res) => {
     if (!report) return res.status(404).json({ error: "Not found" });
 
     const fp = await generatePDF(report);
-    const t  = nodemailer.createTransport({
+
+    console.log("PDF path:", fp);
+
+    if (!fp) return res.status(500).json({ error: "PDF generation failed" });
+
+    const t = nodemailer.createTransport({
       service: "gmail",
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
     });
@@ -536,7 +545,7 @@ router.post("/email/:id", async (req, res) => {
                <h2 style="color:#3730a3">Activity Report – ${report.title}</h2>
                <p>Date: ${report.date || "N/A"} | Organized by: ${report.organizedBy || "N/A"}</p>
                ${report.registrationLink
-                 ? `<a href="${report.registrationLink}"
+          ? `<a href="${report.registrationLink}"
                        style="background:#3730a3;color:#fff;padding:8px 16px;
                               border-radius:5px;text-decoration:none">
                     Register →</a>` : ""}
@@ -545,11 +554,11 @@ router.post("/email/:id", async (req, res) => {
     });
 
     res.json({ message: "Email sent" });
- } catch (err) {
+  } catch (err) {
     console.error("FULL EMAIL ERROR:", err);
     res.status(500).json({ error: "Email failed: " + err.message });
   }
-  
+
 });
 
 // DELETE
