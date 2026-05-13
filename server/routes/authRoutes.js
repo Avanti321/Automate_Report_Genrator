@@ -5,43 +5,78 @@ const User = require("../models/User");
 
 // REGISTER
 router.post("/register", async (req, res) => {
+  try {
+    console.log("REQ BODY:", req.body);
 
-  const hashed = await bcrypt.hash(req.body.password, 10);
+    const { name, email, password, role } = req.body;
 
-  const user = new User({
-    name: req.body.name,
-    email: req.body.email,
-    password: hashed,
-    role: req.body.role
-  });
+    // ✅ VALIDATION
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        message: "All fields are required"
+      });
+    }
 
-  await user.save();
+    // ✅ CHECK EXISTING USER
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        message: "User already exists"
+      });
+    }
 
-  res.json({ message: "User registered successfully" });
+    // ✅ SAFE HASH
+    const hashed = await bcrypt.hash(password, 10);
+
+    const user = new User({
+      name,
+      email,
+      password: hashed,
+      role
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      message: "User registered successfully"
+    });
+
+  } catch (err) {
+    console.error("❌ REGISTER ERROR:", err.message);
+    res.status(500).json({
+      message: err.message || "Server Error"
+    });
+  }
 });
 
 // LOGIN
 router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  const user = await User.findOne({ email: req.body.email });
+    const user = await User.findOne({ email });
 
-  if (!user)
-    return res.status(400).send("User not found");
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
 
-  const valid = await bcrypt.compare(
-    req.body.password,
-    user.password
-  );
+    const valid = await bcrypt.compare(password, user.password);
 
-  if (!valid)
-    return res.status(400).send("Invalid password");
+    if (!valid) {
+      return res.status(400).json({ message: "Invalid password" });
+    }
 
-  const token = jwt.sign(
-    { id: user._id, role: user.role },
-    process.env.JWT_SECRET
-  );
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || "secretkey"
+    );
 
-  res.json({ token, user });
+    res.json({ token, user });
+
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+    res.status(500).json({ message: "Server Error" });
+  }
 });
 
 module.exports = router;
