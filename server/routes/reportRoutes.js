@@ -5,7 +5,7 @@ const Report = require("../models/Report");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend"); // ✅ CHANGED: replaced nodemailer with resend
 const QRCode = require("qrcode");
 const sharp = require("sharp");
 
@@ -18,8 +18,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 // ─────────────────────────────────────────────
-//  FILE UPLOAD  ← switched to diskStorage so
-//  f.filename is always a real string, never null
+//  FILE UPLOAD
 // ─────────────────────────────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
@@ -81,7 +80,7 @@ async function generatePDF(report) {
 
       const PW = doc.page.width;   // 595
       const PH = doc.page.height;  // 842
-      const CW = PW - M * 2;      // 515
+      const CW = PW - M * 2;       // 515
       const SAFE = PH - M - 10;
 
       // ── Colour palette ──────────────────────────────────────────────
@@ -128,7 +127,6 @@ async function generatePDF(report) {
 
       // ── Utility: place image with page-break guard ───────────────────
       async function placeImg(imgPath, imgW, imgH, contHeading) {
-        // Guard: null/missing path
         if (!imgPath || !fs.existsSync(imgPath)) return;
         if (doc.y + imgH > SAFE) {
           doc.addPage(); doc.y = M;
@@ -318,7 +316,6 @@ async function generatePDF(report) {
 
       // ══════════════════════════════════════════════════════════════════
       //  SECTION 6 — Notice / Circular Photos
-      //  FIX: use uploadPath() for absolute, null-safe path
       // ══════════════════════════════════════════════════════════════════
       if (report.noticeFile && report.noticeFile.length > 0) {
         doc.addPage(); doc.y = M;
@@ -326,7 +323,7 @@ async function generatePDF(report) {
         doc.y += 4;
         for (const fname of report.noticeFile) {
           const absPath = uploadPath(fname);
-          if (!absPath) continue;                         // skip null filenames
+          if (!absPath) continue;
           await placeImg(absPath, CW, 235, "Notice / Circular (continued)");
           doc.y += 16;
         }
@@ -334,7 +331,6 @@ async function generatePDF(report) {
 
       // ══════════════════════════════════════════════════════════════════
       //  SECTION 7 — Event Photos (2-per-row grid)
-      //  FIX: use uploadPath() for absolute, null-safe path
       // ══════════════════════════════════════════════════════════════════
       if (report.photos && report.photos.length > 0) {
         doc.addPage(); doc.y = M;
@@ -351,7 +347,7 @@ async function generatePDF(report) {
 
         for (let i = 0; i < report.photos.length; i++) {
           const imgPath = uploadPath(report.photos[i]);
-          if (!imgPath || !fs.existsSync(imgPath)) continue; // skip null/missing
+          if (!imgPath || !fs.existsSync(imgPath)) continue;
 
           if (col === 0 && rowY + EH > SAFE) {
             doc.addPage(); doc.y = M;
@@ -377,7 +373,7 @@ async function generatePDF(report) {
       }
 
       // ══════════════════════════════════════════════════════════════════
-      //  SECTION 8 — QR Codes + Signatures (always on a fresh page)
+      //  SECTION 8 — QR Codes + Signatures
       // ══════════════════════════════════════════════════════════════════
       doc.addPage(); doc.y = M;
 
@@ -473,7 +469,6 @@ async function generatePDF(report) {
 // ─────────────────────────────────────────────
 
 // CREATE
-// FIX: diskStorage sets f.filename correctly — no more undefined/null filenames
 router.post(
   "/",
   upload.fields([
@@ -529,57 +524,81 @@ router.get("/pdf/:id", async (req, res) => {
   }
 });
 
-// EMAIL
-// FIX: generatePDF now always returns a valid absolute path string — no more
-//      path.join(null) crash at line 311
+// ✅ EMAIL ROUTE — using Resend instead of nodemailer (fixes ETIMEDOUT on Render)
 router.post("/email/:id", async (req, res) => {
   try {
     const { to } = req.body;
-    if (!to) return res.status(400).json({ error: "Email required" });
+    if (!to) return res.status(400).json({ error: "Email address is required" });
 
-    console.log("EMAIL_USER:", process.env.EMAIL_USER);
-    console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
-
-    // Guard: make sure env vars are present before even trying
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    // ✅ Check Resend API key is set
+    if (!process.env.RESEND_API_KEY) {
+      console.error("RESEND_API_KEY is not set");
       return res.status(500).json({ error: "Email credentials not configured on server" });
     }
 
-    const report = await Report.findById(req.params.id);
-    if (!report) return res.status(404).json({ error: "Not found" });
+    console.log("Sending email to:", to);
+    console.log("RESEND_API_KEY:", process.env.RESEND_API_KEY ? "SET ✅" : "NOT SET ❌");
 
+    const report = await Report.findById(req.params.id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    // ✅ Generate PDF
     const fp = await generatePDF(report);
     console.log("PDF path:", fp);
 
-    if (!fp) return res.status(500).json({ error: "PDF generation failed" });
+    // ✅ Guard: make sure PDF actually exists on disk
+    if (!fp || !fs.existsSync(fp)) {
+      return res.status(500).json({ error: "PDF file not found after generation" });
+    }
 
-    const t = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    });
+    // ✅ Read PDF as base64 for Resend attachment
+    const pdfBuffer = fs.readFileSync(fp);
+    const pdfBase64 = pdfBuffer.toString("base64");
 
-    t.verify((error, success) => {
-      if (error) console.log("SMTP Error:", error);
-      else console.log("SMTP Ready:", success);
-    });
+    // ✅ Send via Resend (uses HTTPS port 443 — works on Render free tier)
+    const resend = new Resend(process.env.RESEND_API_KEY);
 
-    await t.sendMail({
-      from: `"Activity Report System" <${process.env.EMAIL_USER}>`,
-      to,
+    const { data, error } = await resend.emails.send({
+      from: "Activity Report <onboarding@resend.dev>", // ✅ works without domain verification
+      to: [to],
       subject: `Activity Report – ${report.title}`,
-      html: `<div style="font-family:sans-serif">
-               <h2 style="color:#3730a3">Activity Report – ${report.title}</h2>
-               <p>Date: ${report.date || "N/A"} | Organized by: ${report.organizedBy || "N/A"}</p>
-               ${report.registrationLink
-          ? `<a href="${report.registrationLink}"
-                       style="background:#3730a3;color:#fff;padding:8px 16px;
-                              border-radius:5px;text-decoration:none">
-                    Register →</a>` : ""}
-             </div>`,
-      attachments: [{ filename: `${report.title}.pdf`, path: fp }],
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto;">
+          <h2 style="color: #3730a3;">Activity Report – ${report.title}</h2>
+          <p><strong>Date:</strong> ${report.date || "N/A"}</p>
+          <p><strong>Organized By:</strong> ${report.organizedBy || "N/A"}</p>
+          <p><strong>Speaker:</strong> ${report.speakerName || "N/A"}</p>
+          <p>Please find the full activity report attached as a PDF.</p>
+          ${report.registrationLink
+            ? `<a href="${report.registrationLink}"
+                style="display:inline-block;background:#3730a3;color:#fff;
+                       padding:10px 20px;border-radius:6px;text-decoration:none;
+                       margin-top:10px;">
+                Register →
+               </a>`
+            : ""}
+          <hr style="margin-top:30px;border:none;border-top:1px solid #e5e7eb;" />
+          <p style="color:#6b7280;font-size:12px;">
+            This email was sent by Activity Report System – Modern College, Pune.
+          </p>
+        </div>`,
+      attachments: [
+        {
+          filename: `${report.title || "report"}.pdf`,
+          content: pdfBase64,
+        },
+      ],
     });
 
-    res.json({ message: "Email sent" });
+    // ✅ Resend returns error object instead of throwing — handle it
+    if (error) {
+      console.error("Resend API error:", error);
+      return res.status(500).json({ error: "Email failed: " + error.message });
+    }
+
+    console.log("Email sent successfully. Resend ID:", data?.id);
+    res.json({ message: "Email sent successfully!" });
+
   } catch (err) {
     console.error("FULL EMAIL ERROR:", err);
     res.status(500).json({ error: "Email failed: " + err.message });
@@ -587,13 +606,12 @@ router.post("/email/:id", async (req, res) => {
 });
 
 // DELETE
-// FIX: use UPLOADS_DIR constant for absolute paths — no more relative path issues
 router.delete("/:id", async (req, res) => {
   try {
     const r = await Report.findByIdAndDelete(req.params.id);
     if (r) {
       [...(r.noticeFile || []), ...(r.photos || [])].forEach((f) => {
-        if (!f) return;                                   // skip null filenames
+        if (!f) return;
         const p = path.join(UPLOADS_DIR, f);
         if (fs.existsSync(p)) fs.unlinkSync(p);
       });
